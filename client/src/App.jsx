@@ -1,24 +1,29 @@
 import { useState, useEffect } from 'react'
 
 const API_URL = 'http://localhost:3000'
+const FILTERS = ['all', 'active', 'completed']
+const PRIORITIES = ['low', 'medium', 'high']
 
 function App() {
   const [tasks, setTasks] = useState([])
   const [newTask, setNewTask] = useState('')
+  const [newPriority, setNewPriority] = useState('medium')
+  const [filter, setFilter] = useState('all')
   const [editingId, setEditingId] = useState(null)
   const [editText, setEditText] = useState('')
+  const [editPriority, setEditPriority] = useState('medium')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  // Fetch all tasks
   const fetchTasks = async () => {
     try {
       setLoading(true)
-      const response = await fetch(`${API_URL}/tasks`)
+      const url = filter === 'all'
+        ? `${API_URL}/tasks`
+        : `${API_URL}/tasks?filter=${filter}`
+      const response = await fetch(url)
       const data = await response.json()
-      if (data.success) {
-        setTasks(data.tasks)
-      }
+      if (data.success) setTasks(data.tasks)
       setError(null)
     } catch (err) {
       setError('Failed to connect to server. Make sure the backend is running.')
@@ -29,78 +34,98 @@ function App() {
 
   useEffect(() => {
     fetchTasks()
-  }, [])
+  }, [filter])
 
-  // Add a new task
   const handleAddTask = async (e) => {
     e.preventDefault()
     if (!newTask.trim()) return
-
     try {
       const response = await fetch(`${API_URL}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task: newTask })
+        body: JSON.stringify({ task: newTask, priority: newPriority })
       })
       const data = await response.json()
       if (data.success) {
-        setTasks([...tasks, data.task])
         setNewTask('')
+        setNewPriority('medium')
+        fetchTasks()
       }
     } catch (err) {
       setError('Failed to add task')
     }
   }
 
-  // Delete a task
-  const handleDelete = async (id) => {
+  const handleToggleComplete = async (id) => {
     try {
-      const response = await fetch(`${API_URL}/tasks/${id}`, {
-        method: 'DELETE'
+      const response = await fetch(`${API_URL}/tasks/${id}/toggle`, {
+        method: 'PATCH'
       })
       const data = await response.json()
       if (data.success) {
-        setTasks(tasks.filter(task => task.id !== id))
-      }
-    } catch (err) {
-      setError('Failed to delete task')
-    }
-  }
-
-  // Start editing a task
-  const startEdit = (task) => {
-    setEditingId(task.id)
-    setEditText(task.task)
-  }
-
-  // Save edited task
-  const handleEdit = async (id) => {
-    if (!editText.trim()) return
-
-    try {
-      const response = await fetch(`${API_URL}/tasks/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task: editText })
-      })
-      const data = await response.json()
-      if (data.success) {
-        setTasks(tasks.map(task => 
-          task.id === id ? { ...task, task: editText } : task
-        ))
-        setEditingId(null)
-        setEditText('')
+        setTasks(tasks.map(t => t.id === id ? { ...t, completed: data.task.completed } : t))
       }
     } catch (err) {
       setError('Failed to update task')
     }
   }
 
-  // Cancel editing
+  const handleDelete = async (id) => {
+    try {
+      const response = await fetch(`${API_URL}/tasks/${id}`, { method: 'DELETE' })
+      const data = await response.json()
+      if (data.success) setTasks(tasks.filter(t => t.id !== id))
+    } catch (err) {
+      setError('Failed to delete task')
+    }
+  }
+
+  const startEdit = (task) => {
+    setEditingId(task.id)
+    setEditText(task.task)
+    setEditPriority(task.priority || 'medium')
+  }
+
+  const handleEdit = async (id) => {
+    if (!editText.trim()) return
+    try {
+      const response = await fetch(`${API_URL}/tasks/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task: editText, priority: editPriority })
+      })
+      const data = await response.json()
+      if (data.success) {
+        setTasks(tasks.map(t =>
+          t.id === id ? { ...t, task: editText, priority: editPriority } : t
+        ))
+        setEditingId(null)
+        setEditText('')
+        setEditPriority('medium')
+      }
+    } catch (err) {
+      setError('Failed to update task')
+    }
+  }
+
   const cancelEdit = () => {
     setEditingId(null)
     setEditText('')
+    setEditPriority('medium')
   }
+
+  const handleClearCompleted = async () => {
+    try {
+      const response = await fetch(`${API_URL}/tasks/completed`, { method: 'DELETE' })
+      const data = await response.json()
+      if (data.success) fetchTasks()
+    } catch (err) {
+      setError('Failed to clear completed')
+    }
+  }
+
+  const completedCount = tasks.filter(t => t.completed).length
+  const hasCompleted = tasks.some(t => t.completed)
 
   return (
     <div className="app">
@@ -125,10 +150,30 @@ function App() {
             placeholder="Add a new task..."
             className="task-input"
           />
-          <button type="submit" className="btn btn-primary">
-            Add Task
-          </button>
+          <select
+            value={newPriority}
+            onChange={(e) => setNewPriority(e.target.value)}
+            className="priority-select"
+            title="Priority"
+          >
+            {PRIORITIES.map(p => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+          <button type="submit" className="btn btn-primary">Add Task</button>
         </form>
+
+        <div className="filter-tabs">
+          {FILTERS.map(f => (
+            <button
+              key={f}
+              className={`filter-btn ${filter === f ? 'active' : ''}`}
+              onClick={() => setFilter(f)}
+            >
+              {f.charAt(0).toUpperCase() + f.slice(1)}
+            </button>
+          ))}
+        </div>
 
         <div className="tasks-container">
           {loading ? (
@@ -136,12 +181,16 @@ function App() {
           ) : tasks.length === 0 ? (
             <div className="empty-state">
               <div className="empty-icon">📝</div>
-              <p>No tasks yet. Add one above!</p>
+              <p>
+                {filter === 'all' && 'No tasks yet. Add one above!'}
+                {filter === 'active' && 'No active tasks.'}
+                {filter === 'completed' && 'No completed tasks yet.'}
+              </p>
             </div>
           ) : (
             <ul className="task-list">
               {tasks.map((task) => (
-                <li key={task.id} className="task-item">
+                <li key={task.id} className={`task-item ${task.completed ? 'completed' : ''}`}>
                   {editingId === task.id ? (
                     <div className="edit-mode">
                       <input
@@ -151,26 +200,40 @@ function App() {
                         className="edit-input"
                         autoFocus
                       />
+                      <select
+                        value={editPriority}
+                        onChange={(e) => setEditPriority(e.target.value)}
+                        className="priority-select edit-priority"
+                      >
+                        {PRIORITIES.map(p => (
+                          <option key={p} value={p}>{p}</option>
+                        ))}
+                      </select>
                       <div className="edit-actions">
-                        <button onClick={() => handleEdit(task.id)} className="btn btn-save">
-                          Save
-                        </button>
-                        <button onClick={cancelEdit} className="btn btn-cancel">
-                          Cancel
-                        </button>
+                        <button onClick={() => handleEdit(task.id)} className="btn btn-save">Save</button>
+                        <button onClick={cancelEdit} className="btn btn-cancel">Cancel</button>
                       </div>
                     </div>
                   ) : (
                     <>
+                      <button
+                        type="button"
+                        className="checkbox"
+                        onClick={() => handleToggleComplete(task.id)}
+                        aria-label={task.completed ? 'Mark incomplete' : 'Mark complete'}
+                      >
+                        {task.completed ? '✓' : ''}
+                      </button>
                       <span className="task-number">{task.id}</span>
-                      <span className="task-text">{task.task}</span>
+                      <span className={`task-text ${task.completed ? 'strikethrough' : ''}`}>
+                        {task.task}
+                      </span>
+                      <span className={`priority-badge priority-${task.priority || 'medium'}`}>
+                        {task.priority || 'medium'}
+                      </span>
                       <div className="task-actions">
-                        <button onClick={() => startEdit(task)} className="btn btn-edit">
-                          Edit
-                        </button>
-                        <button onClick={() => handleDelete(task.id)} className="btn btn-delete">
-                          Delete
-                        </button>
+                        <button onClick={() => startEdit(task)} className="btn btn-edit">Edit</button>
+                        <button onClick={() => handleDelete(task.id)} className="btn btn-delete">Delete</button>
                       </div>
                     </>
                   )}
@@ -181,7 +244,12 @@ function App() {
         </div>
 
         <footer className="footer">
-          <p>{tasks.length} task{tasks.length !== 1 ? 's' : ''} total</p>
+          <p>{tasks.length} task{tasks.length !== 1 ? 's' : ''}</p>
+          {hasCompleted && (
+            <button onClick={handleClearCompleted} className="btn-clear-completed">
+              Clear completed ({completedCount})
+            </button>
+          )}
         </footer>
       </div>
     </div>

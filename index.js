@@ -11,13 +11,26 @@ const TASKS_FILE = path.join(__dirname, 'tasks.json');
 app.use(cors());
 app.use(express.json());
 
-// Load tasks from file
+// Normalize task: string -> { task, completed, priority }
+function normalizeTask(item, index) {
+  if (typeof item === 'string') {
+    return { task: item, completed: false, priority: 'medium' };
+  }
+  return {
+    task: item.task || '',
+    completed: Boolean(item.completed),
+    priority: ['low', 'medium', 'high'].includes(item.priority) ? item.priority : 'medium'
+  };
+}
+
+// Load tasks from file (supports legacy array of strings)
 function loadTasks() {
   try {
     if (fs.existsSync(TASKS_FILE)) {
       const data = fs.readFileSync(TASKS_FILE, 'utf8');
-      const tasks = JSON.parse(data);
-      return Array.isArray(tasks) ? tasks : [];
+      const raw = JSON.parse(data);
+      const tasks = Array.isArray(raw) ? raw.map(normalizeTask) : [];
+      return tasks;
     }
   } catch (error) {
     console.error('Error loading tasks:', error.message);
@@ -36,16 +49,28 @@ function saveTasks(tasks) {
   }
 }
 
-// GET /tasks - Get all tasks
+// GET /tasks - Get all tasks (optional ?filter=active|completed)
 app.get('/tasks', (req, res) => {
-  const tasks = loadTasks();
+  const all = loadTasks();
+  let tasks = all;
+  const filter = req.query.filter;
+  if (filter === 'active') tasks = all.filter(t => !t.completed);
+  if (filter === 'completed') tasks = all.filter(t => t.completed);
+  const withIds = all.map((item, i) => ({
+    id: i + 1,
+    task: item.task,
+    completed: item.completed,
+    priority: item.priority
+  }));
+  const filtered = filter === 'active'
+    ? withIds.filter(t => !t.completed)
+    : filter === 'completed'
+      ? withIds.filter(t => t.completed)
+      : withIds;
   res.json({
     success: true,
-    count: tasks.length,
-    tasks: tasks.map((task, index) => ({
-      id: index + 1,
-      task: task
-    }))
+    count: filtered.length,
+    tasks: filtered
   });
 });
 
@@ -61,18 +86,21 @@ app.get('/tasks/:id', (req, res) => {
     });
   }
   
+  const item = tasks[id - 1];
   res.json({
     success: true,
     task: {
-      id: id,
-      task: tasks[id - 1]
+      id,
+      task: item.task,
+      completed: item.completed,
+      priority: item.priority
     }
   });
 });
 
 // POST /tasks - Add a new task
 app.post('/tasks', (req, res) => {
-  const { task } = req.body;
+  const { task, priority = 'medium' } = req.body;
   
   if (!task || typeof task !== 'string' || !task.trim()) {
     return res.status(400).json({
@@ -81,9 +109,10 @@ app.post('/tasks', (req, res) => {
     });
   }
   
+  const p = ['low', 'medium', 'high'].includes(priority) ? priority : 'medium';
   const tasks = loadTasks();
-  const newTask = task.trim();
-  tasks.push(newTask);
+  const newItem = { task: task.trim(), completed: false, priority: p };
+  tasks.push(newItem);
   
   if (saveTasks(tasks)) {
     res.status(201).json({
@@ -91,13 +120,32 @@ app.post('/tasks', (req, res) => {
       message: 'Task added successfully',
       task: {
         id: tasks.length,
-        task: newTask
+        task: newItem.task,
+        completed: false,
+        priority: newItem.priority
       }
     });
   } else {
     res.status(500).json({
       success: false,
       error: 'Failed to save task'
+    });
+  }
+});
+
+// DELETE /tasks/completed - Delete all completed tasks (must be before /tasks/:id)
+app.delete('/tasks/completed', (req, res) => {
+  const tasks = loadTasks().filter(t => !t.completed);
+  if (saveTasks(tasks)) {
+    res.json({
+      success: true,
+      message: 'Completed tasks deleted successfully',
+      remaining: tasks.length
+    });
+  } else {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete completed tasks'
     });
   }
 });
@@ -114,15 +162,17 @@ app.delete('/tasks/:id', (req, res) => {
     });
   }
   
-  const deletedTask = tasks.splice(id - 1, 1)[0];
+  const deleted = tasks.splice(id - 1, 1)[0];
   
   if (saveTasks(tasks)) {
     res.json({
       success: true,
       message: 'Task deleted successfully',
       deletedTask: {
-        id: id,
-        task: deletedTask
+        id,
+        task: deleted.task,
+        completed: deleted.completed,
+        priority: deleted.priority
       }
     });
   } else {
@@ -133,9 +183,43 @@ app.delete('/tasks/:id', (req, res) => {
   }
 });
 
+// PATCH /tasks/:id/toggle - Toggle completed status
+app.patch('/tasks/:id/toggle', (req, res) => {
+  const tasks = loadTasks();
+  const id = parseInt(req.params.id);
+  
+  if (isNaN(id) || id < 1 || id > tasks.length) {
+    return res.status(404).json({
+      success: false,
+      error: 'Task not found'
+    });
+  }
+  
+  const item = tasks[id - 1];
+  item.completed = !item.completed;
+  
+  if (saveTasks(tasks)) {
+    res.json({
+      success: true,
+      message: item.completed ? 'Task marked complete' : 'Task marked incomplete',
+      task: {
+        id,
+        task: item.task,
+        completed: item.completed,
+        priority: item.priority
+      }
+    });
+  } else {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update task'
+    });
+  }
+});
+
 // PUT /tasks/:id - Update a task
 app.put('/tasks/:id', (req, res) => {
-  const { task } = req.body;
+  const { task, priority } = req.body;
   const id = parseInt(req.params.id);
   
   if (!task || typeof task !== 'string' || !task.trim()) {
@@ -154,16 +238,19 @@ app.put('/tasks/:id', (req, res) => {
     });
   }
   
-  const updatedTask = task.trim();
-  tasks[id - 1] = updatedTask;
+  const item = tasks[id - 1];
+  item.task = task.trim();
+  if (priority && ['low', 'medium', 'high'].includes(priority)) item.priority = priority;
   
   if (saveTasks(tasks)) {
     res.json({
       success: true,
       message: 'Task updated successfully',
       task: {
-        id: id,
-        task: updatedTask
+        id,
+        task: item.task,
+        completed: item.completed,
+        priority: item.priority
       }
     });
   } else {
@@ -194,11 +281,13 @@ app.get('/', (req, res) => {
   res.json({
     message: 'Todo List API',
     endpoints: {
-      'GET /tasks': 'Get all tasks',
+      'GET /tasks': 'Get all tasks (?filter=active|completed)',
       'GET /tasks/:id': 'Get a specific task',
-      'POST /tasks': 'Add a new task (body: { "task": "your task" })',
-      'PUT /tasks/:id': 'Update a task (body: { "task": "updated task" })',
-      'DELETE /tasks/:id': 'Delete a specific task',
+      'POST /tasks': 'Add task (body: { "task": "text", "priority": "low|medium|high" })',
+      'PUT /tasks/:id': 'Update task (body: { "task": "text", "priority": "..." })',
+      'PATCH /tasks/:id/toggle': 'Toggle completed status',
+      'DELETE /tasks/:id': 'Delete a task',
+      'DELETE /tasks/completed': 'Delete all completed tasks',
       'DELETE /tasks': 'Delete all tasks'
     }
   });
