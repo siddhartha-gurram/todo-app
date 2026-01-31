@@ -301,21 +301,34 @@ app.use((req, res) => {
   });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`
+// Start server (try next port if 3000 is in use)
+function startServer(port) {
+  const server = app.listen(port, () => {
+    console.log(`
 ╔═══════════════════════════════════════════════════╗
 ║           Todo List API Server                    ║
 ╠═══════════════════════════════════════════════════╣
-║  Server running at: http://localhost:${PORT}         ║
+║  Server running at: http://localhost:${port}         ║
 ╠═══════════════════════════════════════════════════╣
 ║  Endpoints:                                       ║
-║    GET    /tasks      - Get all tasks             ║
-║    GET    /tasks/:id  - Get a specific task       ║
-║    POST   /tasks      - Add a new task            ║
-║    PUT    /tasks/:id  - Update a task             ║
-║    DELETE /tasks/:id  - Delete a task             ║
-║    DELETE /tasks      - Delete all tasks          ║
+║    GET    /tasks           - Get all tasks        ║
+║    GET    /tasks/:id       - Get a task           ║
+║    POST   /tasks           - Add a task          ║
+║    PUT    /tasks/:id       - Update a task        ║
+║    PATCH  /tasks/:id/toggle - Toggle complete     ║
+║    DELETE /tasks/:id       - Delete a task       ║
+║    DELETE /tasks/completed - Clear completed      ║
+║    DELETE /tasks           - Delete all tasks    ║
 ╚═══════════════════════════════════════════════════╝
   `);
-});
+  });
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.log(`Port ${port} in use, trying ${port + 1}...`);
+      startServer(port + 1);
+    } else {
+      throw err;
+    }
+  });
+}
+startServer(PORT);
