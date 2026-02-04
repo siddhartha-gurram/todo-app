@@ -90,6 +90,20 @@ body {
   cursor: pointer;
 }
 
+.due-date-input {
+  padding: 12px 14px;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  background: white;
+  min-width: 140px;
+}
+
+.due-date-input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
 .filter-tabs {
   display: flex;
   gap: 8px;
@@ -264,6 +278,25 @@ body {
 .priority-badge.priority-high {
   background: #fee2e2;
   color: #dc2626;
+}
+
+.due-date-badge {
+  font-size: 0.75rem;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #e0e7ff;
+  color: #4f46e5;
+  flex-shrink: 0;
+}
+
+.due-date-badge.overdue {
+  background: #fee2e2;
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.edit-due {
+  min-width: 130px;
 }
 
 .task-actions {

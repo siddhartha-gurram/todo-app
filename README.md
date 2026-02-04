@@ -8,6 +8,7 @@ A full-stack todo app with a **React** frontend and **Node.js/Express** API. Tas
 - **Mark complete/incomplete** with a checkbox
 - **Filter** by All, Active, or Completed
 - **Priority** (Low, Medium, High) when adding or editing
+- **Due date** – optional date per task; overdue tasks are highlighted in red
 - **Clear completed** – remove all completed tasks at once
 - Responsive UI
 
@@ -52,7 +53,7 @@ Opens the app at http://localhost:5173.
 |--------|------------------------|--------------------------|
 | GET    | /tasks                 | Get all tasks (?filter=active\|completed) |
 | GET    | /tasks/:id             | Get one task             |
-| POST   | /tasks                 | Add task (body: `{ "task": "text", "priority": "low\|medium\|high" }`) |
+| POST   | /tasks                 | Add task (body: `{ "task": "text", "priority": "...", "dueDate": "YYYY-MM-DD" }`) |
 | PUT    | /tasks/:id             | Update task              |
 | PATCH  | /tasks/:id/toggle      | Toggle completed         |
 | DELETE | /tasks/:id             | Delete one task         |

@@ -11,15 +11,25 @@ const TASKS_FILE = path.join(__dirname, 'tasks.json');
 app.use(cors());
 app.use(express.json());
 
-// Normalize task: string -> { task, completed, priority }
-function normalizeTask(item, index) {
+// Validate optional due date (YYYY-MM-DD)
+function parseDueDate(val) {
+  if (val == null || val === '') return null;
+  const s = String(val).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : s;
+}
+
+// Normalize task: string -> { task, completed, priority, dueDate }
+function normalizeTask(item) {
   if (typeof item === 'string') {
-    return { task: item, completed: false, priority: 'medium' };
+    return { task: item, completed: false, priority: 'medium', dueDate: null };
   }
   return {
     task: item.task || '',
     completed: Boolean(item.completed),
-    priority: ['low', 'medium', 'high'].includes(item.priority) ? item.priority : 'medium'
+    priority: ['low', 'medium', 'high'].includes(item.priority) ? item.priority : 'medium',
+    dueDate: parseDueDate(item.dueDate) || null
   };
 }
 
@@ -60,7 +70,8 @@ app.get('/tasks', (req, res) => {
     id: i + 1,
     task: item.task,
     completed: item.completed,
-    priority: item.priority
+    priority: item.priority,
+    dueDate: item.dueDate || null
   }));
   const filtered = filter === 'active'
     ? withIds.filter(t => !t.completed)
@@ -93,7 +104,8 @@ app.get('/tasks/:id', (req, res) => {
       id,
       task: item.task,
       completed: item.completed,
-      priority: item.priority
+      priority: item.priority,
+      dueDate: item.dueDate || null
     }
   });
 });
@@ -110,8 +122,9 @@ app.post('/tasks', (req, res) => {
   }
   
   const p = ['low', 'medium', 'high'].includes(priority) ? priority : 'medium';
+  const dueDate = parseDueDate(req.body.dueDate);
   const tasks = loadTasks();
-  const newItem = { task: task.trim(), completed: false, priority: p };
+  const newItem = { task: task.trim(), completed: false, priority: p, dueDate };
   tasks.push(newItem);
   
   if (saveTasks(tasks)) {
@@ -122,7 +135,8 @@ app.post('/tasks', (req, res) => {
         id: tasks.length,
         task: newItem.task,
         completed: false,
-        priority: newItem.priority
+        priority: newItem.priority,
+        dueDate: newItem.dueDate
       }
     });
   } else {
@@ -172,7 +186,8 @@ app.delete('/tasks/:id', (req, res) => {
         id,
         task: deleted.task,
         completed: deleted.completed,
-        priority: deleted.priority
+        priority: deleted.priority,
+        dueDate: deleted.dueDate || null
       }
     });
   } else {
@@ -206,7 +221,8 @@ app.patch('/tasks/:id/toggle', (req, res) => {
         id,
         task: item.task,
         completed: item.completed,
-        priority: item.priority
+        priority: item.priority,
+        dueDate: item.dueDate || null
       }
     });
   } else {
@@ -241,6 +257,7 @@ app.put('/tasks/:id', (req, res) => {
   const item = tasks[id - 1];
   item.task = task.trim();
   if (priority && ['low', 'medium', 'high'].includes(priority)) item.priority = priority;
+  if (req.body.hasOwnProperty('dueDate')) item.dueDate = parseDueDate(req.body.dueDate);
   
   if (saveTasks(tasks)) {
     res.json({
@@ -250,7 +267,8 @@ app.put('/tasks/:id', (req, res) => {
         id,
         task: item.task,
         completed: item.completed,
-        priority: item.priority
+        priority: item.priority,
+        dueDate: item.dueDate || null
       }
     });
   } else {
