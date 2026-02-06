@@ -5,6 +5,7 @@ const FILTERS = ['all', 'active', 'completed']
 const PRIORITIES = ['low', 'medium', 'high']
 
 function App() {
+  const [darkMode, setDarkMode] = useState(false)
   const [tasks, setTasks] = useState([])
   const [newTask, setNewTask] = useState('')
   const [newPriority, setNewPriority] = useState('medium')
@@ -156,9 +157,16 @@ function App() {
   const hasCompleted = tasks.some(t => t.completed)
 
   return (
-    <div className="app">
+    <div className={`app ${darkMode ? 'dark' : ''}`}>
       <div className="container">
         <header className="header">
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={() => setDarkMode(!darkMode)}
+          >
+            {darkMode ? '☀️ Light' : '🌙 Dark'}
+          </button>
           <h1>Todo List</h1>
           <p className="subtitle">Stay organized, get things done</p>
         </header>
